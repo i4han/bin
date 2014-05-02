@@ -2,11 +2,9 @@ var _ = require('underscore');
 var fs = require('fs');
 var crypto = require('crypto');
 var serialize = require('node-serialize');
-var redis = require('redis')
-var rc = redis.createClient();
 
 require( 'coffee-script/register' );
-var Config = require('../lib/config').Config;
+var Config = require(process.env.METEOR_APP + '/lib/config').Config;
 var __ = require( Config.lib_file ).__;
 
 
@@ -23,7 +21,6 @@ var stringOrFunctionToString = function (what) {
 
 
 lib = { 
-    storables: '/home/action/workspace/app/private/storables',
     readFile: function (file, callback) {
         fs.readFile( file, { encoding: 'utf8' }, function ( err, data ) {
             if (err) return callback(err);
@@ -55,6 +52,8 @@ lib = {
 _.extend( __, lib );
 
 __.getStorables = function () {
+    if ( ! fs.existsSync( Config.storables) )
+        fs.openSync( Config.storables, 'w' );
     var content = __.readFileSync( Config.storables );
     content = ( content.length > 0 ) ? content : '{}';
     return serialize.unserialize( content );
@@ -62,7 +61,7 @@ __.getStorables = function () {
 
 __.saveStorables = function (data) {
     __.overwriteFile( Config.storables, serialize.serialize( data ) );
-    rc.rpush( 'node_utils:log', '64 Storables saved' );
+    Config.redis.rpush( 'node_utils:log', '64 Storables saved' );
 }
 
 
@@ -93,7 +92,8 @@ __.collectKey = function (obj, kind, storables_hash) {
         });
         __.overwriteFile( template.target_file, fileTarget );
         console.log( 'Updated ' + template.target_file);
-        rc.rpush( 'node_utils:log', ' 94 fileTarget:' + template.target_file );
+        console.log( Config.redis );
+        Config.redis.rpush( 'node_utils:log', ' 95 fileTarget:' + template.target_file );
     };
     
     var hash = checkSum();
@@ -102,7 +102,7 @@ __.collectKey = function (obj, kind, storables_hash) {
             updateFile();   
     } else
         updateFile();
-    rc.rpush( 'node_utils:log', '103 kind:' + kind );
+    Config.redis.rpush( 'node_utils:log', '103 kind:' + kind );
     return hash;
 }
 
@@ -111,10 +111,10 @@ __.collectPages = function ( pages_in_file ) {
    var storables = __.getStorables();
     _.each( Config.templates, function ( type ) {
         storables[type + '_hash'] = __.collectKey( pages_in_file, type, storables[type + '_hash'] );
-        rc.rpush( 'node_utils:log', '113 type:' + type );
+        Config.redis.rpush( 'node_utils:log', '113 type:' + type );
     });
     __.saveStorables( storables );
-    rc.rpush( 'node_utils:log', '116 done' );
+    Config.redis.rpush( 'node_utils:log', '116 done' );
 
 }
 

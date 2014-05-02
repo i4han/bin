@@ -1,15 +1,127 @@
 #!/usr/bin/env node
 
 var _ = require('underscore');
-var su = require('./node_utils');
-// var redis = require('redis'), rc = redis.createClient();
+var fs = require('fs');
+var crypto = require('crypto');
+var serialize = require('node-serialize');
 require( 'coffee-script/register' );
-var Config = require(process.env.HOME + 'lib/config').Config;
+var config = require(process.env.METEOR_APP + '/lib/config');
+var Config = config.Config;
+var __ = config.__;
+
+
+
+var stringOrFunctionToString = function (what) {
+    if (!what) {
+        return ''; 
+    } else if (typeof what == 'string') {
+        return what;
+    } else if (typeof what == 'function') {
+        return what.call(this, Config);
+    } else  throw "Error";
+}
+
+
+lib = { 
+    readFile: function (file, callback) {
+        fs.readFile( file, { encoding: 'utf8' }, function ( err, data ) {
+            if (err) return callback(err);
+            callback(null, data);
+        });
+    },
+    readFileSync: function (file) {
+        return fs.readFileSync(file, { encoding: 'utf8' })
+    },
+    writeFile: function (file, data) {
+        fs.writeFile( file, data, function (err) { 
+            if ( err ) throw err; 
+        });
+    },
+    overwriteFile: function (file, data) {
+        fs.writeFileSync( file, data, { encoding: 'utf8', flag: 'w+' } );
+    },
+    indentBlock: function (block, indent) {
+        if ( indent ) {
+            block = new String( block );
+            block = block.replace( /^/gm, __.repeat( Config.indent_string, indent ) );
+            block = block.toString();
+        }
+        return block
+    }
+}
+
+
+_.extend( __, lib );
+
+__.getStorables = function () {
+    if ( ! fs.existsSync( Config.storables) ) {
+        file = fs.openSync( Config.storables, 'w' );
+        fs.closeSync(file);
+    }
+    var content = __.readFileSync( Config.storables );
+    content = ( content.length > 0 ) ? content : '{}';
+    return serialize.unserialize( content );
+}
+
+__.saveStorables = function (data) {
+    __.overwriteFile( Config.storables, serialize.serialize( data ) );
+    Config.redis.rpush( 'node_utils:log', '68 Storables saved' );
+}
+
+
+__.collectKey = function (obj, kind, storables_hash) {
+    
+    var strSum = '';
+    var template = Config.pages[kind];
+    
+    var checkSum = function () {
+        _.each( _.keys(obj), function ( file ) {
+            _.each( _.keys( obj[file] ), function ( page ) {
+                strSum += stringOrFunctionToString( obj[file][page][kind] );
+            });
+        });
+        return crypto.createHash('md5').update( strSum ).digest('hex');
+    }
+    var updateFile = function () {
+        var fileTarget = template.header ? template.header : '';
+        _.each( _.keys(obj), function ( file ) { 
+            _.each( _.keys(obj[file]), function ( page ) { 
+                var block = stringOrFunctionToString( obj[file][page][kind] );
+                if ( block ) {
+                    block = __.indentBlock( block, template.indent );
+                    var target = template.format.call( this, page, block );
+                    fileTarget += target;
+                }
+            });
+        });
+        __.overwriteFile( template.target_file, fileTarget );
+        console.log( 'Updated ' + template.target_file);
+        Config.redis.rpush( 'node_utils:log', ' 99 fileTarget:' + template.target_file );
+    };
+    
+    var hash = checkSum();
+    if ( fs.existsSync(template.target_file) ) {
+        if ( storables_hash !== hash )
+            updateFile();   
+    } else
+        updateFile();
+    Config.redis.rpush( 'node_utils:log', '108 kind:' + kind );
+    return hash;
+}
+
+
+__.collectPages = function ( pages_in_file ) {
+    var storables = __.getStorables();
+    _.each( Config.templates, function ( type ) {
+        storables[type + '_hash'] = __.collectKey( pages_in_file, type, storables[type + '_hash'] );
+        Config.redis.rpush( 'node_utils:log', '117 type:' + type );
+    });
+    __.saveStorables( storables );
+    Config.redis.rpush( 'node_utils:log', '120 done' );
+}
 
 var pages_in_file = {}
-_.each( Config.sets, function (set) {
-    pages_in_file[set] = require( Config.source_dir + Config.set_prefix + set )[set];
-});
+_.each( Config.sets, function (set) { pages_in_file[set] = require( Config.source_dir + Config.set_prefix + set )[set]; });
+__.collectPages( pages_in_file );
+Config.quit();
 
-su.collectPages( pages_in_file );
-process.exit(code=0)
