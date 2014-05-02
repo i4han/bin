@@ -4,8 +4,7 @@ var _ = require('underscore');
 var fs = require('fs');
 var crypto = require('crypto');
 var serialize = require('node-serialize');
-require( 'coffee-script/register' );
-var config = require(process.env.METEOR_APP + '/lib/config');
+var config = require('config');
 var Config = config.Config;
 var __ = config.__;
 
@@ -120,6 +119,7 @@ __.collectPages = function ( pages_in_file ) {
     Config.redis.rpush( 'node_utils:log', '120 done' );
 }
 
+require('coffee-script/register');
 var pages_in_file = {}
 _.each( Config.sets, function (set) { pages_in_file[set] = require( Config.source_dir + Config.set_prefix + set )[set]; });
 __.collectPages( pages_in_file );
