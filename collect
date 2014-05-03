@@ -122,7 +122,7 @@ var collectPages = function (pages_in_file) {
 (function () {
     require('coffee-script/register');
     var pages_in_file = {}
-    _.each( Config.sets, function (set) { pages_in_file[set] = require( Config.source_dir + Config.set_prefix + set )[set]; });
+    _.each( Config.sets, function (set) { pages_in_file[set] = require( Config.source_dir + set )[set]; });
     collectPages( pages_in_file );
     Config.quit();
 }.call(this));
