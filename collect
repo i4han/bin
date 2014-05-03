@@ -9,7 +9,6 @@ var Config = config.Config;
 var __ = config.__;
 
 
-
 var stringOrFunctionToString = function (what) {
     if (!what) {
         return ''; 
@@ -52,7 +51,7 @@ lib = {
 
 _.extend( __, lib );
 
-__.getStorables = function () {
+var getStorables = function () {
     if ( ! fs.existsSync( Config.storables) ) {
         file = fs.openSync( Config.storables, 'w' );
         fs.closeSync(file);
@@ -62,13 +61,13 @@ __.getStorables = function () {
     return serialize.unserialize( content );
 }
 
-__.saveStorables = function (data) {
+var saveStorables = function (data) {
     __.overwriteFile( Config.storables, serialize.serialize( data ) );
     Config.redis.rpush( 'node_utils:log', '68 Storables saved' );
 }
 
 
-__.collectKey = function (obj, kind, storables_hash) {
+var collectKey = function (obj, kind, storables_hash) {
     
     var strSum = '';
     var template = Config.pages[kind];
@@ -95,7 +94,7 @@ __.collectKey = function (obj, kind, storables_hash) {
         });
         __.overwriteFile( template.target_file, fileTarget );
         console.log( 'Updated ' + template.target_file);
-        Config.redis.rpush( 'node_utils:log', ' 99 fileTarget:' + template.target_file );
+        Config.redis.rpush( 'node_utils:log', ' 97 fileTarget:' + template.target_file );
     };
     
     var hash = checkSum();
@@ -104,24 +103,28 @@ __.collectKey = function (obj, kind, storables_hash) {
             updateFile();   
     } else
         updateFile();
-    Config.redis.rpush( 'node_utils:log', '108 kind:' + kind );
+    Config.redis.rpush( 'node_utils:log', '106 kind:' + kind );
     return hash;
 }
 
 
-__.collectPages = function ( pages_in_file ) {
-    var storables = __.getStorables();
+var collectPages = function (pages_in_file) {
+    var storables = getStorables();
     _.each( Config.templates, function ( type ) {
-        storables[type + '_hash'] = __.collectKey( pages_in_file, type, storables[type + '_hash'] );
+        storables[type + '_hash'] = collectKey( pages_in_file, type, storables[type + '_hash'] );
         Config.redis.rpush( 'node_utils:log', '117 type:' + type );
     });
-    __.saveStorables( storables );
-    Config.redis.rpush( 'node_utils:log', '120 done' );
-}
+    saveStorables( storables );
+    Config.redis.rpush( 'node_utils:log', '118 done' );
+};
 
-require('coffee-script/register');
-var pages_in_file = {}
-_.each( Config.sets, function (set) { pages_in_file[set] = require( Config.source_dir + Config.set_prefix + set )[set]; });
-__.collectPages( pages_in_file );
-Config.quit();
+
+(function () {
+    require('coffee-script/register');
+    var pages_in_file = {}
+    _.each( Config.sets, function (set) { pages_in_file[set] = require( Config.source_dir + Config.set_prefix + set )[set]; });
+    collectPages( pages_in_file );
+    Config.quit();
+}.call(this));
+
 
